@@ -1,5 +1,6 @@
-import "dotenv/config"; // 1. Added at the top to load .env variables locally
+import "dotenv/config";
 import express from "express";
+import cors from "cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { MongoClient } from "mongodb";
@@ -8,10 +9,18 @@ import { z } from "zod";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Enable CORS and JSON parsing required for cloud agents
+app.use(cors());
+app.use(express.json());
+
+// Root Health Check Route (Fixes "Cannot GET /" and Zia base-URL validation)
+app.get("/", (req, res) => {
+  res.status(200).send("MongoDB MCP Server is running.");
+});
+
 // 1. Initialize MongoDB Connection
 const MONGO_URI = process.env.MONGODB_URI;
 
-// 2. Added safety check to catch missing environment variables before connecting
 if (!MONGO_URI) {
   console.error("Error: MONGODB_URI environment variable is missing.");
   process.exit(1);
@@ -65,13 +74,12 @@ function createMcpServer() {
   return server;
 }
 
-// Active connection session tracker
 const transports = new Map();
 
 // 3. SSE Connection Route
 app.get("/sse", async (req, res) => {
   const transport = new SSEServerTransport("/messages", res);
-  const server = createMcpServer(); // Create unique server instance for this session
+  const server = createMcpServer();
 
   transports.set(transport.sessionId, transport);
 
@@ -88,7 +96,7 @@ app.post("/messages", async (req, res) => {
   const transport = transports.get(sessionId);
 
   if (transport) {
-    await transport.handlePostMessage(req, res);
+    await transport.handlePostMessage(req, res, req.body);
   } else {
     res.status(400).json({ error: "Session not found or expired" });
   }
