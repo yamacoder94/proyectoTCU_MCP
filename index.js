@@ -11,12 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 
-// Incoming request logger for debugging cloud agent handshakes
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
-
+// Health Check Route
 app.get("/", (req, res) => {
   res.status(200).send("MongoDB MCP Server is running.");
 });
@@ -75,13 +70,19 @@ function createMcpServer() {
 
 const transports = new Map();
 
+// 3. SSE Connection Route
 app.get("/sse", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
 
-  const transport = new SSEServerTransport("/messages", res);
+  // Construct absolute HTTPS URL so Zoho knows exactly where to POST messages
+  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.get("host");
+  const messageUrl = `${protocol}://${host}/messages`;
+
+  const transport = new SSEServerTransport(messageUrl, res);
   const server = createMcpServer();
 
   transports.set(transport.sessionId, transport);
@@ -93,6 +94,7 @@ app.get("/sse", async (req, res) => {
   await server.connect(transport);
 });
 
+// 4. Message Endpoint Route
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId;
   const transport = transports.get(sessionId);
