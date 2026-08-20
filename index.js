@@ -9,13 +9,12 @@ import { z } from "zod";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable proxy trusting so Express respects Render's X-Forwarded-Proto headers
+// Trust proxy headers for Render HTTPS URL resolution
 app.set("trust proxy", true);
 
 app.use(cors());
 app.use(express.json());
 
-// Explicit HTTPS public domain
 const BASE_URL = process.env.BASE_URL || "https://proyectotcu-mcp.onrender.com";
 
 // Health Check Route
@@ -79,15 +78,9 @@ const transports = new Map();
 
 // SSE Connection Route
 app.get("/sse", async (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-
-  // Flush headers immediately so Zoho receives a 200 connection response instantly
-  res.flushHeaders();
-
   const messageUrl = `${BASE_URL}/messages`;
+  
+  // SSEServerTransport automatically writes the required headers during start()
   const transport = new SSEServerTransport(messageUrl, res);
   const server = createMcpServer();
 
@@ -110,7 +103,6 @@ app.post("/messages", async (req, res) => {
   }
 
   try {
-    // Pass req.body explicitly to work seamlessly with express.json()
     await transport.handlePostMessage(req, res, req.body);
   } catch (error) {
     console.error("Error handling message:", error);
