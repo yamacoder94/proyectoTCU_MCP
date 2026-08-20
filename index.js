@@ -9,16 +9,13 @@ import { z } from "zod";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable CORS and JSON parsing required for cloud agents
 app.use(cors());
 app.use(express.json());
 
-// Root Health Check Route (Fixes "Cannot GET /" and Zia base-URL validation)
 app.get("/", (req, res) => {
   res.status(200).send("MongoDB MCP Server is running.");
 });
 
-// 1. Initialize MongoDB Connection
 const MONGO_URI = process.env.MONGODB_URI;
 
 if (!MONGO_URI) {
@@ -26,11 +23,8 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
-const client = new MongoClient(MONGO_URI);
-await client.connect();
-const db = client.db();
+let db;
 
-// 2. Factory function to generate a fresh McpServer per session
 function createMcpServer() {
   const server = new McpServer({
     name: "MongoDB-Zia-Server",
@@ -76,8 +70,12 @@ function createMcpServer() {
 
 const transports = new Map();
 
-// 3. SSE Connection Route
 app.get("/sse", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
   const transport = new SSEServerTransport("/messages", res);
   const server = createMcpServer();
 
@@ -90,7 +88,6 @@ app.get("/sse", async (req, res) => {
   await server.connect(transport);
 });
 
-// 4. Message Endpoint Route
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId;
   const transport = transports.get(sessionId);
@@ -102,6 +99,20 @@ app.post("/messages", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+async function start() {
+  try {
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    db = client.db();
+    console.log("Connected to MongoDB successfully.");
+
+    app.listen(PORT, () => {
+      console.log(`Server listening on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Database connection error:", error);
+    process.exit(1);
+  }
+}
+
+start();
