@@ -10,7 +10,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+
+// Incoming request logger for debugging cloud agent handshakes
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 app.get("/", (req, res) => {
   res.status(200).send("MongoDB MCP Server is running.");
@@ -93,7 +98,7 @@ app.post("/messages", async (req, res) => {
   const transport = transports.get(sessionId);
 
   if (transport) {
-    await transport.handlePostMessage(req, res, req.body);
+    await transport.handlePostMessage(req, res);
   } else {
     res.status(400).json({ error: "Session not found or expired" });
   }
