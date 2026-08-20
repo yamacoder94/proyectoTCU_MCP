@@ -1,3 +1,4 @@
+import "dotenv/config"; // 1. Added at the top to load .env variables locally
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
@@ -9,6 +10,13 @@ const PORT = process.env.PORT || 3000;
 
 // 1. Initialize MongoDB Connection
 const MONGO_URI = process.env.MONGODB_URI;
+
+// 2. Added safety check to catch missing environment variables before connecting
+if (!MONGO_URI) {
+  console.error("Error: MONGODB_URI environment variable is missing.");
+  process.exit(1);
+}
+
 const client = new MongoClient(MONGO_URI);
 await client.connect();
 const db = client.db();
