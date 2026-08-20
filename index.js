@@ -9,7 +9,14 @@ import { z } from "zod";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Enable proxy trusting so Express respects Render's X-Forwarded-Proto headers
+app.set("trust proxy", true);
+
 app.use(cors());
+app.use(express.json());
+
+// Explicit HTTPS public domain
+const BASE_URL = process.env.BASE_URL || "https://proyectotcu-mcp.onrender.com";
 
 // Health Check Route
 app.get("/", (req, res) => {
@@ -70,18 +77,17 @@ function createMcpServer() {
 
 const transports = new Map();
 
-// 3. SSE Connection Route
+// SSE Connection Route
 app.get("/sse", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
 
-  // Construct absolute HTTPS URL so Zoho knows exactly where to POST messages
-  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
-  const host = req.get("host");
-  const messageUrl = `${protocol}://${host}/messages`;
+  // Flush headers immediately so Zoho receives a 200 connection response instantly
+  res.flushHeaders();
 
+  const messageUrl = `${BASE_URL}/messages`;
   const transport = new SSEServerTransport(messageUrl, res);
   const server = createMcpServer();
 
@@ -94,15 +100,23 @@ app.get("/sse", async (req, res) => {
   await server.connect(transport);
 });
 
-// 4. Message Endpoint Route
+// Message POST Route
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId;
   const transport = transports.get(sessionId);
 
-  if (transport) {
-    await transport.handlePostMessage(req, res);
-  } else {
-    res.status(400).json({ error: "Session not found or expired" });
+  if (!transport) {
+    return res.status(400).json({ error: "Session not found or expired" });
+  }
+
+  try {
+    // Pass req.body explicitly to work seamlessly with express.json()
+    await transport.handlePostMessage(req, res, req.body);
+  } catch (error) {
+    console.error("Error handling message:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to process message" });
+    }
   }
 });
 
